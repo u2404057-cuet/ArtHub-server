@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const app = express();
 const port = process.env.PORT || 8000;
@@ -17,19 +17,27 @@ const client = new MongoClient(process.env.MONGO_URI, {
 });
 
 async function run() {
-  try {
-
-    const db = client.db("ArtHub");
-    const artCollection = db.collection("arts");
+    try {
+        
+        await client.connect();
+        const db = client.db("ArtHub");
+        const artCollection = db.collection("arts");
 
     app.get("/arts", async (req, res) => {
         const cursor = artCollection.find();
         const result = await cursor.toArray();
         res.send(result);
-
     })
 
-    await client.connect();
+    app.get("/arts/:artId", async (req,res) => {
+        const artId = req.params.artId;
+        const query = {
+            _id : new ObjectId(artId)
+        }
+        const art = await artCollection.findOne(query);
+        res.send(art);
+    })
+
 
     await client.db("admin").command({ ping: 1 });
     console.log(
