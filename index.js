@@ -18,7 +18,7 @@ const client = new MongoClient(process.env.MONGO_URI, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     const db = client.db("ArtHub");
     const artCollection = db.collection("arts");
 
@@ -219,7 +219,6 @@ async function run() {
         });
       });
 
-      // Sort by date descending
       transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
       res.send(transactions);
     });
@@ -256,7 +255,6 @@ async function run() {
           dailySales[dateKey] = (dailySales[dateKey] || 0) + subAmount;
         }
 
-        // Purchase revenue & counts
         const purchased = user.purchased_arts || [];
         purchased.forEach((artId) => {
           if (artId && artsMap[artId]) {
@@ -304,7 +302,7 @@ async function run() {
       });
     });
 
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
