@@ -38,6 +38,12 @@ async function run() {
         res.send(art);
     })
 
+    app.post("/arts", async (req, res) => {
+        const art = req.body;
+        const result = await artCollection.insertOne(art);
+        res.send(result);
+    })
+
 
     await client.db("admin").command({ ping: 1 });
     console.log(
