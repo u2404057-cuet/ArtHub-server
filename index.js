@@ -8,6 +8,16 @@ const port = process.env.PORT || 8000;
 app.use(express.json());
 app.use(cors());
 
+
+const verifyToken = async(req, res, next) => {
+  console.log("headers", req.headers);
+  const authHeader = req?.headers?.authorization;
+  if(!authHeader){
+    return res.status(401).send({message : "unauthorized access"});
+  }
+  next();
+}
+
 const client = new MongoClient(process.env.MONGO_URI, {
   serverApi: {
     version: ServerApiVersion.v1,
