@@ -61,16 +61,17 @@ async function run() {
       }
 
       if (page) {
-        const pageNum = Number(page) || 1;
-        const limitNum = Number(limit) || 9;
-        const startIndex = (pageNum - 1) * limitNum;
-        const endIndex = pageNum * limitNum;
-        
-        const paginatedResult = result.slice(startIndex, endIndex);
+        const pageNumber = parseInt(page);
+        const limitNumber = parseInt(limit);
+        const skip = (pageNumber - 1) * limitNumber;
+
+        const paginatedArtworks = result.slice(skip, skip + limitNumber);
+        const totalPages = Math.ceil(result.length / limitNumber);
+
         res.send({
-          artworks: paginatedResult,
-          currentPage: pageNum,
-          totalPages: Math.ceil(result.length / limitNum),
+          artworks: paginatedArtworks,
+          currentPage: pageNumber,
+          totalPages: totalPages,
           totalItems: result.length
         });
       } else {
