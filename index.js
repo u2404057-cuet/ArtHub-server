@@ -23,7 +23,7 @@ async function run() {
     const artCollection = db.collection("arts");
 
     app.get("/arts", async (req, res) => {
-      const { search, category, minPrice, maxPrice, sortBy } = req.query;
+      const { search, category, minPrice, maxPrice, sortBy, page, limit } = req.query;
 
       let result = await artCollection.find().toArray();
 
@@ -60,7 +60,22 @@ async function run() {
         result.sort((a, b) => b.price - a.price);
       }
 
-      res.send(result);
+      if (page) {
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 9;
+        const startIndex = (pageNum - 1) * limitNum;
+        const endIndex = pageNum * limitNum;
+        
+        const paginatedResult = result.slice(startIndex, endIndex);
+        res.send({
+          artworks: paginatedResult,
+          currentPage: pageNum,
+          totalPages: Math.ceil(result.length / limitNum),
+          totalItems: result.length
+        });
+      } else {
+        res.send(result);
+      }
     });
 
     app.get("/arts/:artId", async (req, res) => {
@@ -172,6 +187,7 @@ async function run() {
       const result = await userCollection.updateOne(query, { $set: { role } });
       res.send(result);
     });
+
 
     app.get("/admin/transactions", async (req, res) => {
       const userCollection = db.collection("user");
