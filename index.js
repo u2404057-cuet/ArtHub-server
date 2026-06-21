@@ -29,7 +29,13 @@ const verifyToken = async (req, res, next) => {
       return res.status(401).send({ message: "session expired" });
     }
     // Find the user
-    const user = await userCollection.findOne({ _id: session.userId });
+    let userQuery = {};
+    try {
+      userQuery._id = new ObjectId(session.userId);
+    } catch (e) {
+      userQuery._id = session.userId;
+    }
+    const user = await userCollection.findOne(userQuery);
     if (!user) {
       return res.status(401).send({ message: "unauthorized access" });
     }
