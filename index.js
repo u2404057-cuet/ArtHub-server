@@ -8,15 +8,39 @@ const port = process.env.PORT || 8000;
 app.use(express.json());
 app.use(cors());
 
+let db;
+let artCollection;
+let sessionCollection;
+let userCollection;
 
-const verifyToken = async(req, res, next) => {
-  console.log("headers", req.headers);
+const verifyToken = async (req, res, next) => {
   const authHeader = req?.headers?.authorization;
-  if(!authHeader){
-    return res.status(401).send({message : "unauthorized access"});
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).send({ message: "unauthorized access" });
   }
-  next();
-}
+  const token = authHeader.split(" ")[1];
+  try {
+    const session = await sessionCollection.findOne({ token: token });
+    if (!session) {
+      return res.status(401).send({ message: "unauthorized access" });
+    }
+    // Check if session has expired
+    if (new Date(session.expiresAt) < new Date()) {
+      return res.status(401).send({ message: "session expired" });
+    }
+    // Find the user
+    const user = await userCollection.findOne({ _id: session.userId });
+    if (!user) {
+      return res.status(401).send({ message: "unauthorized access" });
+    }
+    req.user = user;
+    req.session = session;
+    next();
+  } catch (error) {
+    console.error("Error in verifyToken middleware:", error);
+    return res.status(500).send({ message: "internal server error" });
+  }
+};
 
 const client = new MongoClient(process.env.MONGO_URI, {
   serverApi: {
@@ -29,8 +53,10 @@ const client = new MongoClient(process.env.MONGO_URI, {
 async function run() {
   try {
     // await client.connect();
-    const db = client.db("ArtHub");
-    const artCollection = db.collection("arts");
+    db = client.db("ArtHub");
+    artCollection = db.collection("arts");
+    sessionCollection = db.collection("session");
+    userCollection = db.collection("user");
 
     app.get("/arts", async (req, res) => {
       const { search, category, minPrice, maxPrice, sortBy, page, limit } = req.query;
@@ -98,15 +124,29 @@ async function run() {
       res.send(art);
     });
 
-    app.post("/arts", async (req, res) => {
+    app.post("/arts", verifyToken, async (req, res) => {
+      if (req.user.role !== "artist") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const art = req.body;
       const result = await artCollection.insertOne(art);
       res.send(result);
     });
 
-    app.put("/arts/:artId", async (req, res) => {
+    app.put("/arts/:artId", verifyToken, async (req, res) => {
+      if (req.user.role !== "artist") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const artId = req.params.artId;
       const filter = { _id: new ObjectId(artId) };
+      const art = await artCollection.findOne(filter);
+      if (!art) {
+        return res.status(404).send({ message: "artwork not found" });
+      }
+      if (art.artistEmail !== req.user.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+
       const updatedArt = req.body;
       const updateDoc = {
         $set: {
@@ -121,17 +161,37 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/arts/:artId", async (req, res) => {
+    app.delete("/arts/:artId", verifyToken, async (req, res) => {
+      if (req.user.role !== "artist" && req.user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const artId = req.params.artId;
       const query = { _id: new ObjectId(artId) };
+
+      if (req.user.role === "artist") {
+        const art = await artCollection.findOne(query);
+        if (!art) {
+          return res.status(404).send({ message: "artwork not found" });
+        }
+        if (art.artistEmail !== req.user.email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+      }
+
       const result = await artCollection.deleteOne(query);
       res.send(result);
     });
 
-    app.get("/artist-sales", async (req, res) => {
+    app.get("/artist-sales", verifyToken, async (req, res) => {
+      if (req.user.role !== "artist") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const { email, artistId } = req.query;
       if (!email) {
         return res.status(400).send({ error: "Artist email is required" });
+      }
+      if (email !== req.user.email) {
+        return res.status(403).send({ message: "forbidden access" });
       }
 
       const artistArts = await artCollection
@@ -146,7 +206,6 @@ async function run() {
         artistArtsMap[idStr] = art;
       });
 
-      const userCollection = db.collection("user");
       const users = await userCollection
         .find({
           purchased_arts: { $exists: true, $not: { $size: 0 } },
@@ -179,16 +238,20 @@ async function run() {
       res.send({ salesHistory });
     });
 
-    app.get("/admin/users", async (req, res) => {
-      const userCollection = db.collection("user");
+    app.get("/admin/users", verifyToken, async (req, res) => {
+      if (req.user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const users = await userCollection.find().toArray();
       res.send(users);
     });
 
-    app.put("/admin/users/:userId/role", async (req, res) => {
+    app.put("/admin/users/:userId/role", verifyToken, async (req, res) => {
+      if (req.user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const userId = req.params.userId;
       const { role } = req.body;
-      const userCollection = db.collection("user");
       let query = {};
       try {
         query._id = new ObjectId(userId);
@@ -200,8 +263,10 @@ async function run() {
     });
 
 
-    app.get("/admin/transactions", async (req, res) => {
-      const userCollection = db.collection("user");
+    app.get("/admin/transactions", verifyToken, async (req, res) => {
+      if (req.user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const users = await userCollection.find().toArray();
       const arts = await artCollection.find().toArray();
 
@@ -250,8 +315,10 @@ async function run() {
       res.send(transactions);
     });
 
-    app.get("/admin/analytics", async (req, res) => {
-      const userCollection = db.collection("user");
+    app.get("/admin/analytics", verifyToken, async (req, res) => {
+      if (req.user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const users = await userCollection.find().toArray();
       const arts = await artCollection.find().toArray();
 
